@@ -1,9 +1,12 @@
+import os
+
 import cv2
 import numpy as np
-from ultralytics import YOLO
 import supervision as sv
-from config.paths import VIDEO_PATH, MODEL_PATH, OUTPUT_DIRECTORY
+from ultralytics import YOLO
+
 from config.firebase import *
+from config.paths import VIDEO_PATH, MODEL_PATH, OUTPUT_DIRECTORY, is_win
 
 # Load the YOLO model
 model = YOLO(MODEL_PATH)
@@ -61,19 +64,10 @@ def process_frame(frame, prev_frame, model, zones, zone_annotator):
 
     mask = zones.trigger(detections=detections)
     detections_filtered = detections[mask]
-
-    detection_count = len(detections_filtered)
-    # ###################### Push data to Firebase Realtime Database ######################
-    # users_ref.push({
-    #     'date': date_now.date().isoformat(),
-    #     'time': date_now.time().isoformat(),
-    #     'detection': detection_count,
-    #     'prediction': ''
-    # })
-    # #####################################################################################
     box_annotator = sv.LabelAnnotator(text_position=sv.Position.CENTER)
     frame = box_annotator.annotate(scene=frame, detections=detections_filtered)
     frame = zone_annotator.annotate(scene=frame)
+    detection_count = len(detections_filtered)
 
     if motion_detected(prev_frame, frame):
         fps = high_fps
@@ -84,6 +78,25 @@ def process_frame(frame, prev_frame, model, zones, zone_annotator):
 
     cv2.putText(frame, f'FPS: {fps}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
+    # ###### Save Image ####################################################################
+    timestamp = date_now.strftime("%Y%m%d_%H%M%S")
+    filename = os.path.join(OUTPUT_DIRECTORY, f"det_{timestamp}.jpg")
+    cv2.imwrite(filename, frame)
+    print(f"Frame saved to: {filename}")
+    # ###################### Push data to Firebase Realtime Database ######################
+    # Upload the image to Firebase Storage
+    blob = firebase_bucket.blob(f'falls/fall_{timestamp}.jpg')
+    blob.upload_from_filename(filename)
+    img_url = blob.public_url  # Get the image's download URL
+
+    users_ref.push({
+        'date': date_now.date().isoformat(),
+        'time': date_now.time().isoformat(),
+        'detection': detection_count,
+        'prediction': '',
+        'image': img_url
+    })
+    # #####################################################################################
     return frame
 
 
@@ -110,11 +123,12 @@ if __name__ == "__main__":
             # Process the frame
             processed_frame = process_frame(frame, prev_frame, model, zones, zone_annotator)
             out.write(processed_frame)
-            # Display the frame
-            cv2.imshow('Processed Video', processed_frame)
+            if is_win == "Windows":
+                # Display the frame
+                cv2.imshow('Processed Video', processed_frame)
             prev_frame = frame.copy()
 
-            if cv2.waitKey(int(1000 / fps)) & 0xFF == ord('q'):
+            if (is_win == "Windows" and cv2.waitKey(int(1000 / fps))) & 0xFF == ord('q'):
                 break
 
     except KeyboardInterrupt:
@@ -124,6 +138,7 @@ if __name__ == "__main__":
         # Release everything properly
         cap.release()
         out.release()
-        cv2.destroyAllWindows()
+        if is_win == "Windows":
+            cv2.destroyAllWindows()
 
         print(f"Video processing complete. Output saved : {OUTPUT_DIRECTORY}/output.mp4.")

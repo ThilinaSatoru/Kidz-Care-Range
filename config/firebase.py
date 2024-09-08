@@ -4,7 +4,6 @@ import firebase_admin
 from firebase_admin import credentials, storage
 from firebase_admin import db
 
-
 date_now = datetime.now()
 
 # Firebase Configuration
@@ -25,4 +24,4 @@ firebase_ref = db.reference(FIREBASE_DATABASE_NAME)
 users_ref = firebase_ref.child('range_detection')
 
 # If Saving Images, Initialize Firebase Storage bucket
-# firebase_bucket = storage.bucket()
+firebase_bucket = storage.bucket()
