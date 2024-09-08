@@ -2,6 +2,8 @@
 
 Kids Care AI IOT Device - RaspberryPi and Picamera range detection.
 
+![schemetic](YOLO/frame_sample.jpg)
+
 ## SSH Login to Raspberry PI
 
 ```cmd
