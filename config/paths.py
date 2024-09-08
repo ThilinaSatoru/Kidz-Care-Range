@@ -1,12 +1,12 @@
 # Define paths
 import os
-import platform
 
+is_win = False
 # Check if the system is Linux or Windows
-is_win = platform.system() == "Windows"
-is_linux = platform.system() == "Linux"
+if os.name == 'nt':
+    is_win = True
 
-VIDEO_PATH = r"samples/v2.mp4"
+VIDEO_PATH = r"samples/v1.mp4"
 MODEL_PATH = r"YOLO/94.1 63.3/model.pt"
 
 OUTPUT_DIRECTORY = 'OUTS'

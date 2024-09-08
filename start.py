@@ -1,4 +1,5 @@
 import os
+import time
 
 import cv2
 import numpy as np
@@ -15,6 +16,19 @@ model = YOLO(MODEL_PATH)
 low_fps = 15
 high_fps = 30
 fps = high_fps
+
+# Add a boolean flag to choose input source
+print('If Sample Video - 1, Camera - 2: ')
+x = input()
+if int(x) == 1:
+    use_picamera2 = False  # Set to True to use video file, False to use PiCamera
+else:
+    use_picamera2 = True
+
+if use_picamera2:
+    from picamera2 import Picamera2
+else:
+    from config.paths import VIDEO_PATH
 
 
 # Motion detection logic
@@ -58,6 +72,31 @@ def setup_zones(frame):
     return zones, zone_annotator
 
 
+def update_firebase(detection_count):
+    timestamp = int(time.time() * 1000)
+    attendance = attendance_ref.get('count')[0].get('count')
+    print(f"#####################################################  Attendance : {detection_count} of {attendance}.")
+    if int(attendance) > int(detection_count):
+        print(f"---------------------------------------------------------------- YES")
+        # ###################### Push data to Firebase Realtime Database ######################
+        filename = os.path.join(OUTPUT_DIRECTORY, f"img.jpg")
+        cv2.imwrite(filename, frame)
+        print(f"Frame saved to: {filename}")
+        # Upload the image to Firebase Storage
+        blob = firebase_bucket.blob(f'detections/img.jpg')
+        blob.upload_from_filename(filename)
+        img_url = blob.public_url  # Get the image's download URL
+        # kids_ref.set({
+        #     'count': detection_count,
+        # })
+        alert_ref.child(str(timestamp)).set({
+            'type': 'range',
+            'image': img_url
+        })
+    else:
+        print(f"---------------------------------------------------------------- NO :")
+
+
 def process_frame(frame, prev_frame, model, zones, zone_annotator):
     global fps
     detections, results = detect_objects(frame, model)
@@ -76,69 +115,78 @@ def process_frame(frame, prev_frame, model, zones, zone_annotator):
         fps = low_fps
         print(f"No motion detected, Reducing frame rate. Found:{detection_count}")
 
+    update_firebase(detection_count)
+
     cv2.putText(frame, f'FPS: {fps}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-    # ###### Save Image ####################################################################
-    timestamp = date_now.strftime("%Y%m%d_%H%M%S")
-    filename = os.path.join(OUTPUT_DIRECTORY, f"det_{timestamp}.jpg")
-    cv2.imwrite(filename, frame)
-    print(f"Frame saved to: {filename}")
-    # ###################### Push data to Firebase Realtime Database ######################
-    # Upload the image to Firebase Storage
-    blob = firebase_bucket.blob(f'falls/fall_{timestamp}.jpg')
-    blob.upload_from_filename(filename)
-    img_url = blob.public_url  # Get the image's download URL
-
-    users_ref.push({
-        'date': date_now.date().isoformat(),
-        'time': date_now.time().isoformat(),
-        'detection': detection_count,
-        'prediction': '',
-        'image': img_url
-    })
     # #####################################################################################
     return frame
 
 
 if __name__ == "__main__":
-    cap = cv2.VideoCapture(VIDEO_PATH)
-    ret, first_frame = cap.read()
-    if not ret:
-        print("Failed to read the video")
-        exit()
+    if use_picamera2:
+        # Initialize Picamera2
+        picam2 = Picamera2()
+        picam2.preview_configuration.main.size = (640, 480)
+        picam2.preview_configuration.main.format = "RGB888"
+        picam2.preview_configuration.controls.FrameRate = high_fps
+        picam2.configure("preview")
+        picam2.start()
+        first_frame = picam2.capture_array()
+    else:
+        # Use VideoCapture for video file
+        cap = cv2.VideoCapture(VIDEO_PATH)
+        ret, first_frame = cap.read()
+        if not ret:
+            print("Failed to read the video")
+            exit()
+
     zones, zone_annotator = setup_zones(first_frame)
     prev_frame = first_frame.copy()
 
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width, height = 640, 480  # For Picamera2
+    if not use_picamera2:
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(OUTPUT_DIRECTORY + '/output.mp4', fourcc, fps, (width, height))
 
     try:
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            # Process the frame
-            processed_frame = process_frame(frame, prev_frame, model, zones, zone_annotator)
-            out.write(processed_frame)
-            if is_win == "Windows":
-                # Display the frame
-                cv2.imshow('Processed Video', processed_frame)
-            prev_frame = frame.copy()
-
-            if (is_win == "Windows" and cv2.waitKey(int(1000 / fps))) & 0xFF == ord('q'):
-                break
+        if use_picamera2:
+            while True:
+                frame = picam2.capture_array()
+                processed_frame = process_frame(frame, prev_frame, model, zones, zone_annotator)
+                out.write(processed_frame)
+                if is_win:
+                    cv2.imshow('Processed Video', processed_frame)
+                    prev_frame = frame.copy()
+                    if cv2.waitKey(int(1000 / fps)) & 0xFF == ord('q'):
+                        break
+        else:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                processed_frame = process_frame(frame, prev_frame, model, zones, zone_annotator)
+                out.write(processed_frame)
+                if is_win:
+                    cv2.imshow('Processed Video', processed_frame)
+                    prev_frame = frame.copy()
+                    if cv2.waitKey(int(1000 / fps)) & 0xFF == ord('q'):
+                        break
 
     except KeyboardInterrupt:
-        print("\nProcessing interrupted by user. Saving the video output...")
+        print("\nProcessing interrupted by user. Saving video output...")
 
     finally:
-        # Release everything properly
-        cap.release()
+        # Release resources
+        if use_picamera2:
+            picam2.stop()
+        else:
+            cap.release()
         out.release()
         if is_win == "Windows":
             cv2.destroyAllWindows()
 
-        print(f"Video processing complete. Output saved : {OUTPUT_DIRECTORY}/output.mp4.")
+        print(f"Video processing complete. Output saved: {OUTPUT_DIRECTORY}/output.mp4.")
