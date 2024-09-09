@@ -27,6 +27,7 @@ else:
 
 if use_picamera2:
     from picamera2 import Picamera2
+    import libcamera
 else:
     from config.paths import VIDEO_PATH
 
@@ -130,6 +131,8 @@ if __name__ == "__main__":
         picam2.preview_configuration.main.size = (640, 480)
         picam2.preview_configuration.main.format = "RGB888"
         picam2.preview_configuration.controls.FrameRate = high_fps
+        # Apply 180-degree rotation (both horizontal and vertical flip)
+        picam2.preview_configuration.transform = libcamera.Transform(hflip=True, vflip=True)
         picam2.configure("preview")
         picam2.start()
         first_frame = picam2.capture_array()
