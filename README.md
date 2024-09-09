@@ -4,14 +4,6 @@ Kids Care AI IOT Device - RaspberryPi and Picamera range detection.
 
 ![schemetic](YOLO/frame_sample.jpg)
 
-## SSH Login to Raspberry PI
-
-```cmd
-ssh admin@raspberrypi.local
-```
-
-password: `admin`
-
 ## Configurations
 
 `paths.py`
@@ -35,8 +27,21 @@ users_ref = firebase_ref.child('range_detection')
 
 --- 
 
-## Run
+## SSH Login to Raspberry PI
 
+```cmd
+ssh admin@raspberrypi.local
+```
+
+`password: admin`
+
+## Test Picam
+
+```cmd
+python Documents/cam/stream.py
+```
+
+## Run
  ```bash
- python start.py
+ python Documents/Kidz-Care-Range/start.py
  ```

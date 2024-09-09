@@ -80,13 +80,14 @@ def update_firebase(detection_count):
     if int(attendance) > int(detection_count):
         print(f"---------------------------------------------------------------- YES")
         # ###################### Push data to Firebase Realtime Database ######################
+        # Save image to Folder
         filename = os.path.join(OUTPUT_DIRECTORY, f"img.jpg")
         cv2.imwrite(filename, frame)
         print(f"Frame saved to: {filename}")
         # Upload the image to Firebase Storage
         blob = firebase_bucket.blob(f'detections/img.jpg')
         blob.upload_from_filename(filename)
-        img_url = blob.public_url  # Get the image's download URL
+        img_url = blob.public_url
         # kids_ref.set({
         #     'count': detection_count,
         # })
