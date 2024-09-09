@@ -45,3 +45,9 @@ python Documents/cam/stream.py
  ```bash
  python Documents/Kidz-Care-Range/start.py
  ```
+
+# Shutdown
+
+```bash
+sudo shutdown now
+```
